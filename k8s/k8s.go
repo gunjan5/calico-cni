@@ -171,13 +171,22 @@ func CmdAddK8s(args *skel.CmdArgs, conf utils.NetConf, hostname string, calicoCl
 			}
 		}
 
-		// Run the IPAM plugin
-		logger.Debugf("Calling IPAM plugin %s", conf.IPAM.Type)
-		result, err = ipam.ExecAdd(conf.IPAM.Type, args.StdinData)
-		if err != nil {
-			return nil, err
+		ipAddrsNoIpam := annot["cni.projectcalico.org/ipAddrsNoIpam"]
+
+		// Call IPAM plugin if ipAddrsNoIpam annotation is not present.
+		if ipAddrsNoIpam == "" {
+			// Run the IPAM plugin
+			logger.Debugf("Calling IPAM plugin %s", conf.IPAM.Type)
+			result, err = ipam.ExecAdd(conf.IPAM.Type, args.StdinData)
+			if err != nil {
+				return nil, err
+			}
+			logger.Debugf("IPAM plugin returned: %+v", result)
+		} else {
+			// ipAddrsNoIpam annotation is set so bypass IPMA, and set the IPs manually.
+			result = overrideIPAMResult(ipAddrsNoIpam, logger)
+			logger.Debugf("Bypassing IPAM to set the IP config to: %+v", result)
 		}
-		logger.Debugf("IPAM plugin returned: %+v", result)
 
 		// Create the endpoint object and configure it.
 		endpoint = api.NewWorkloadEndpoint()
@@ -236,6 +245,74 @@ func CmdAddK8s(args *skel.CmdArgs, conf utils.NetConf, hostname string, calicoCl
 	logger.Info("Wrote updated endpoint to datastore")
 
 	return result, nil
+}
+
+// overrideIPAMResult generates types.Result like the one produced by IPAM plugin,
+// but sets IP field manually since IPAM is bypassed with this annotation.
+// Example annotation:
+// cni.projectcalico.org/ipAddrsNoIpam: "[\"10.0.0.1\", \"2001:db8::1\"]"
+func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) *types.Result {
+	var ips []string
+	var visited4, visited6 int
+
+	err := json.Unmarshal([]byte(ipAddrsNoIpam), &ips)
+	if err != nil {
+		logger.WithField("annotation", ipAddrsNoIpam).Fatal("Invalid JSON")
+	}
+
+	result := types.Result{
+		IP4: &types.IPConfig{
+			IP: net.IPNet{
+				Mask: net.CIDRMask(32, 32),
+			},
+		},
+		IP6: &types.IPConfig{
+			IP: net.IPNet{
+				Mask: net.CIDRMask(128, 128),
+			},
+		},
+		DNS: types.DNS{},
+	}
+
+	// annotation value can't be empty.
+	if len(ips) == 0 {
+		logger.WithField("annotation", "cni.projectcalico.org/ipAddrsNoIpam").Fatal("No IPs specified")
+	}
+
+	// Go through all the IPs passed in as annotation value and populate
+	// the result variable with IP4 and/or IP6 IPs.
+	// We also make sure there is only one IPv4 and/or one IPv6 passed in,
+	// since CNI spec only supports one of each right now.
+	for _, ip := range ips {
+
+		ipAddr := net.ParseIP(ip)
+		if ipAddr == nil {
+			logger.WithField("IP", ip).Fatal("Invalid IP format")
+		}
+
+		// It's an IPv6 address if ip.To4 is nil.
+		if ipAddr.To4() == nil {
+			// We only allow one IPv4 and one IPv6 at the moment.
+			// So if we see more than one of IPv4 or IPv6 then we throw an error.
+			// If/when CNI spec supports more than one IP, we can loosen this requirement.
+			if visited6 >= 1 {
+				logger.Fatal("Can not have more than one IPv6 addresses in ipAddrsNoIpam annotation")
+			} else {
+				result.IP6.IP.IP = ipAddr
+				visited6++
+			}
+		} else {
+			// It's an IPv4 address.
+			if visited4 >= 1 {
+				logger.Fatal("Can not have more than one IPv4 addresses in ipAddrsNoIpam annotation")
+			} else {
+				result.IP4.IP.IP = ipAddr
+				visited4++
+			}
+		}
+	}
+
+	return &result
 }
 
 func newK8sClient(conf utils.NetConf, logger *log.Entry) (*kubernetes.Clientset, error) {
