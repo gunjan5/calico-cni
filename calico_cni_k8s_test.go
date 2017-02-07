@@ -257,7 +257,7 @@ var _ = Describe("CalicoCni", func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					// Now create a K8s pod passing in an IP address.
-					name := fmt.Sprintf("run%d-ipNoIpam", rand.Uint32())
+					name := fmt.Sprintf("run%d-ip", rand.Uint32())
 					pod, err := clientset.Pods(K8S_TEST_NS).Create(&v1.Pod{
 						ObjectMeta: v1.ObjectMeta{
 							Name: name,
