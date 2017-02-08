@@ -260,7 +260,7 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 	err := json.Unmarshal([]byte(ipAddrsNoIpam), &ips)
 	if err != nil {
 		logger.WithField("annotation", ipAddrsNoIpam).Error("Failed to parse ipAddrsNoIpam as json")
-		return nil, err
+		return nil, fmt.Errorf("Failed to parse ipAddrsNoIpam: %s", err)
 	}
 
 	result := types.Result{}
@@ -268,7 +268,7 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 	// annotation value can't be empty.
 	if len(ips) == 0 {
 		logger.WithField("annotation", "cni.projectcalico.org/ipAddrsNoIpam").Error("No IPs specified")
-		return nil, err
+		return nil, fmt.Errorf("No IPs specified with annotation \"cni.projectcalico.org/ipAddrsNoIpam\"")
 	}
 
 	// Go through all the IPs passed in as annotation value and populate
@@ -279,7 +279,7 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 		ipAddr := net.ParseIP(ip)
 		if ipAddr == nil {
 			logger.WithField("IP", ip).Error("Invalid IP format")
-			return nil, err
+			return nil, fmt.Errorf("Invalid IP format: %s", err)
 		}
 
 		// It's an IPv6 address if ip.To4 is nil.
@@ -290,26 +290,24 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 			if result.IP6 != nil {
 				logger.Error("Can not have more than one IPv6 addresses in ipAddrsNoIpam annotation")
 				return nil, errors.New("Can not have more than one IPv6 addresses in ipAddrsNoIpam annotation")
-			} else {
-				result.IP6 = &types.IPConfig{
-					IP: net.IPNet{
-						IP:   ipAddr,
-						Mask: net.CIDRMask(128, 128),
-					},
-				}
+			}
+			result.IP6 = &types.IPConfig{
+				IP: net.IPNet{
+					IP:   ipAddr,
+					Mask: net.CIDRMask(128, 128),
+				},
 			}
 		} else {
 			// It's an IPv4 address.
 			if result.IP4 != nil {
 				logger.Error("Can not have more than one IPv4 addresses in ipAddrsNoIpam annotation")
 				return nil, errors.New("Can not have more than one IPv4 addresses in ipAddrsNoIpam annotation")
-			} else {
-				result.IP4 = &types.IPConfig{
-					IP: net.IPNet{
-						IP:   ipAddr,
-						Mask: net.CIDRMask(32, 32),
-					},
-				}
+			}
+			result.IP4 = &types.IPConfig{
+				IP: net.IPNet{
+					IP:   ipAddr,
+					Mask: net.CIDRMask(32, 32),
+				},
 			}
 		}
 	}
