@@ -14,7 +14,6 @@
 package k8s
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -289,7 +288,7 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 			// If/when CNI spec supports more than one IP, we can loosen this requirement.
 			if result.IP6 != nil {
 				logger.Error("Can not have more than one IPv6 addresses in ipAddrsNoIpam annotation")
-				return nil, errors.New("Can not have more than one IPv6 addresses in ipAddrsNoIpam annotation")
+				return nil, fmt.Errorf("Can not have more than one IPv6 addresses in ipAddrsNoIpam annotation")
 			}
 			result.IP6 = &types.IPConfig{
 				IP: net.IPNet{
@@ -297,11 +296,12 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 					Mask: net.CIDRMask(128, 128),
 				},
 			}
+			logger.Debugf("Adding IPv6: %s to result", ipAddr.String())
 		} else {
 			// It's an IPv4 address.
 			if result.IP4 != nil {
 				logger.Error("Can not have more than one IPv4 addresses in ipAddrsNoIpam annotation")
-				return nil, errors.New("Can not have more than one IPv4 addresses in ipAddrsNoIpam annotation")
+				return nil, fmt.Errorf("Can not have more than one IPv4 addresses in ipAddrsNoIpam annotation")
 			}
 			result.IP4 = &types.IPConfig{
 				IP: net.IPNet{
@@ -309,6 +309,7 @@ func overrideIPAMResult(ipAddrsNoIpam string, logger *log.Entry) (*types.Result,
 					Mask: net.CIDRMask(32, 32),
 				},
 			}
+			logger.Debugf("Adding IPv4: %s to result", ipAddr.String())
 		}
 	}
 
