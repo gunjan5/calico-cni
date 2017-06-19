@@ -21,6 +21,8 @@ func DoNetworking(args *skel.CmdArgs, conf NetConf, result *current.Result, logg
 	contVethName := args.IfName
 	var hasIPv4, hasIPv6 bool
 
+	logger.Infof("**[DoNetworking] hostVethName: %v\n", hostVethName)
+
 	// If a desired veth name was passed in, use that instead.
 	if desiredVethName != "" {
 		hostVethName = desiredVethName
@@ -44,6 +46,8 @@ func DoNetworking(args *skel.CmdArgs, conf NetConf, result *current.Result, logg
 			PeerName: hostVethName,
 		}
 
+		logger.Infof("**[DoNetworking] veth: %v\n", *veth)
+
 		if err := netlink.LinkAdd(veth); err != nil {
 			logger.Errorf("Error adding veth %+v: %s", veth, err)
 			return err
@@ -54,6 +58,8 @@ func DoNetworking(args *skel.CmdArgs, conf NetConf, result *current.Result, logg
 			err = fmt.Errorf("failed to lookup %q: %v", hostVethName, err)
 			return err
 		}
+
+		logger.Infof("**[DoNetworking] hostVeth: %v\n", hostVeth)
 
 		// Explicitly set the veth to UP state, because netlink doesn't always do that on all the platforms with net.FlagUp.
 		// veth won't get a link local address unless it's set to UP state.
@@ -67,6 +73,8 @@ func DoNetworking(args *skel.CmdArgs, conf NetConf, result *current.Result, logg
 			return err
 		}
 
+		logger.Infof("**[DoNetworking] contVeth: %v\n", contVeth)
+
 		// Fetch the MAC from the container Veth. This is needed by Calico.
 		contVethMAC = contVeth.Attrs().HardwareAddr.String()
 		logger.WithField("MAC", contVethMAC).Debug("Found MAC for container veth")
@@ -75,6 +83,8 @@ func DoNetworking(args *skel.CmdArgs, conf NetConf, result *current.Result, logg
 		// Both ends of the veth are still in the container's network namespace.
 
 		for _, addr := range result.IPs {
+
+			logger.Infof("**[DoNetworking] addr: %v\n", addr)
 
 			// Before returning, create the routes inside the namespace, first for IPv4 then IPv6.
 			if addr.Version == "4" {
@@ -110,6 +120,8 @@ func DoNetworking(args *skel.CmdArgs, conf NetConf, result *current.Result, logg
 					logger.Errorf("Error listing IPv6 addresses: %s", err)
 					return err
 				}
+
+				logger.Infof("**[DoNetworking] IPv6: addresses: %v\n", addresses)
 
 				if len(addresses) < 1 {
 					// If the hostVeth doesn't have an IPv6 address then this host probably doesn't
